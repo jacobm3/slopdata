@@ -1,0 +1,3 @@
+# Only one dependency: Faker generates realistic-but-fake PII, credit cards,
+# company/financial fields, addresses, etc. Pure-Python, runs headless.
+Faker>=24.0
