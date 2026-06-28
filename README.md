@@ -42,8 +42,8 @@ BigQuery, Cloud SQL), so all three light up in SCC.
 ## Quick start (GCP Cloud Shell)
 
 ```bash
-git clone <this-repo> synthetic-data-generator
-cd synthetic-data-generator
+git clone https://github.com/jacobm3/slopdata.git
+cd slopdata
 
 # 1. set your prefix (and optionally project/region/volumes)
 nano config.env          # at minimum set PREFIX
