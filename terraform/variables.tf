@@ -28,5 +28,5 @@ variable "enable_cloudsql" {
 variable "retention_days" {
   type        = number
   description = "Auto-delete bucket objects after this many days (0 = never)."
-  default     = 7
+  default     = 365
 }

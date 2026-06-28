@@ -79,7 +79,7 @@ All settings live in **`config.env`** — it's commented; edit and re-run.
 | `ENABLE_*` | all `true` | Turn individual data types on/off. |
 | `VOL_*` | `10MB` (`10KB` for secrets) | Per-type data volume. |
 | `ENABLE_CLOUDSQL` | `true` | The managed database. |
-| `RETENTION_DAYS` | `7` | Bucket objects auto-delete after this. `0` = never. |
+| `RETENTION_DAYS` | `365` | Bucket objects auto-delete after this. `0` = never. |
 
 ### Data volume
 
