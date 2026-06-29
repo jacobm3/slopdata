@@ -181,6 +181,14 @@ resource "google_data_loss_prevention_discovery_config" "bq_demo" {
       }
     }
   }
+  targets {
+    big_query_target {
+      filter {
+        other_tables {}
+      }
+      disabled {}
+    }
+  }
 }
 
 resource "google_data_loss_prevention_discovery_config" "gcs_demo" {
@@ -206,6 +214,14 @@ resource "google_data_loss_prevention_discovery_config" "gcs_demo" {
       generation_cadence {
         refresh_frequency = "UPDATE_FREQUENCY_DAILY"
       }
+    }
+  }
+  targets {
+    cloud_storage_target {
+      filter {
+        others {}
+      }
+      disabled {}
     }
   }
 }
@@ -234,6 +250,14 @@ resource "google_data_loss_prevention_discovery_config" "sql_demo" {
           frequency = "UPDATE_FREQUENCY_DAILY"
         }
       }
+    }
+  }
+  targets {
+    cloud_sql_target {
+      filter {
+        others {}
+      }
+      disabled {}
     }
   }
 }
