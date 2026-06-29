@@ -175,6 +175,9 @@ resource "google_data_loss_prevention_discovery_config" "bq_demo" {
         table_modified_cadence {
           frequency = "UPDATE_FREQUENCY_DAILY"
         }
+        schema_modified_cadence {
+          frequency = "UPDATE_FREQUENCY_DAILY"
+        }
       }
     }
   }
@@ -200,6 +203,9 @@ resource "google_data_loss_prevention_discovery_config" "gcs_demo" {
           }
         }
       }
+      cadence {
+        refresh_frequency = "UPDATE_FREQUENCY_DAILY"
+      }
     }
   }
 }
@@ -224,6 +230,9 @@ resource "google_data_loss_prevention_discovery_config" "sql_demo" {
       }
       generation_cadence {
         refresh_frequency = "UPDATE_FREQUENCY_DAILY"
+        schema_modified_cadence {
+          frequency = "UPDATE_FREQUENCY_DAILY"
+        }
       }
     }
   }
