@@ -134,9 +134,10 @@ resource "google_secret_manager_secret_version" "sdp_sql_password" {
 }
 
 resource "google_project_service_identity" "dlp" {
-  count   = var.enable_cloudsql ? 1 : 0
-  project = data.google_project.project.project_id
-  service = "dlp.googleapis.com"
+  provider = google-beta
+  count    = var.enable_cloudsql ? 1 : 0
+  project  = data.google_project.project.project_id
+  service  = "dlp.googleapis.com"
 }
 
 resource "google_secret_manager_secret_iam_member" "sdp_secret_accessor" {
