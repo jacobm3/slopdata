@@ -144,7 +144,12 @@ gcloud services enable \
   bigquery.googleapis.com \
   sqladmin.googleapis.com \
   dlp.googleapis.com \
+  secretmanager.googleapis.com \
   --project "$PROJECT_ID" --quiet
+
+# Give the APIs a moment to propagate to prevent transient Terraform errors
+echo "[gcp] waiting 10 seconds for API propagation..."
+sleep 10
 
 # ---- terraform --------------------------------------------------------------
 cd terraform
