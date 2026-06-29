@@ -203,7 +203,7 @@ resource "google_data_loss_prevention_discovery_config" "gcs_demo" {
           }
         }
       }
-      cadence {
+      generation_cadence {
         refresh_frequency = "UPDATE_FREQUENCY_DAILY"
       }
     }
