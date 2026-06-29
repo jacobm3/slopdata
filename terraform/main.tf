@@ -97,3 +97,45 @@ resource "google_storage_bucket_iam_member" "sql_read" {
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_sql_database_instance.main[0].service_account_email_address}"
 }
+
+# ---------------------------------------------------------------------------
+# SDP (Sensitive Data Protection) Read-Only Access to Cloud SQL
+# ---------------------------------------------------------------------------
+
+data "google_project" "project" {}
+
+resource "random_password" "sdp_sql_password" {
+  count            = var.enable_cloudsql ? 1 : 0
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+resource "google_sql_user" "sdp_readonly" {
+  count    = var.enable_cloudsql ? 1 : 0
+  name     = "sdp_readonly"
+  instance = google_sql_database_instance.main[0].name
+  password = random_password.sdp_sql_password[0].result
+}
+
+resource "google_secret_manager_secret" "sdp_sql_password" {
+  count     = var.enable_cloudsql ? 1 : 0
+  secret_id = "${var.prefix}-sdp-sql-password-${local.suffix}"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "sdp_sql_password" {
+  count       = var.enable_cloudsql ? 1 : 0
+  secret      = google_secret_manager_secret.sdp_sql_password[0].id
+  secret_data = random_password.sdp_sql_password[0].result
+}
+
+resource "google_secret_manager_secret_iam_member" "sdp_secret_accessor" {
+  count     = var.enable_cloudsql ? 1 : 0
+  secret_id = google_secret_manager_secret.sdp_sql_password[0].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-dlp.iam.gserviceaccount.com"
+}

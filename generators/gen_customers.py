@@ -92,7 +92,16 @@ def main(out_dir, size):
         for c in COLUMNS
     )
     ddl = ("DROP TABLE IF EXISTS customers;\n"
-           "CREATE TABLE customers (\n  %s\n);\n" % cols_ddl)
+           "CREATE TABLE customers (\n  %s\n);\n"
+           "DO $$\n"
+           "BEGIN\n"
+           "  IF EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'sdp_readonly') THEN\n"
+           "    GRANT USAGE ON SCHEMA public TO sdp_readonly;\n"
+           "    GRANT SELECT ON ALL TABLES IN SCHEMA public TO sdp_readonly;\n"
+           "    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO sdp_readonly;\n"
+           "  END IF;\n"
+           "END\n"
+           "$$;\n" % cols_ddl)
 
     csv_f = open(csv_path, "w", newline="", encoding="utf-8")
     json_f = open(jsonl_path, "w", encoding="utf-8")
