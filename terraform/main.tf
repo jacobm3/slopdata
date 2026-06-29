@@ -191,9 +191,6 @@ resource "google_data_loss_prevention_discovery_config" "demo" {
           }
         }
       }
-      generation_cadence {
-        refresh_frequency = "UPDATE_FREQUENCY_DAILY"
-      }
     }
   }
 
@@ -205,7 +202,7 @@ resource "google_data_loss_prevention_discovery_config" "demo" {
           collection {
             include_regexes {
               patterns {
-                instance_id_regex = "^${google_sql_database_instance.main[0].name}$"
+                instance_regex = "^${google_sql_database_instance.main[0].name}$"
               }
             }
           }
