@@ -152,11 +152,11 @@ resource "google_project_iam_member" "dlp_project_driver" {
   member  = "serviceAccount:${google_project_service_identity.dlp.email}"
 }
 
-resource "google_data_loss_prevention_discovery_config" "demo" {
+resource "google_data_loss_prevention_discovery_config" "bq_demo" {
   parent       = "projects/${data.google_project.project.project_id}/locations/global"
   location     = "global"
   status       = "RUNNING"
-  display_name = "${var.prefix}-discovery-config"
+  display_name = "${var.prefix}-bq-discovery-config"
 
   targets {
     big_query_target {
@@ -178,6 +178,13 @@ resource "google_data_loss_prevention_discovery_config" "demo" {
       }
     }
   }
+}
+
+resource "google_data_loss_prevention_discovery_config" "gcs_demo" {
+  parent       = "projects/${data.google_project.project.project_id}/locations/global"
+  location     = "global"
+  status       = "RUNNING"
+  display_name = "${var.prefix}-gcs-discovery-config"
 
   targets {
     cloud_storage_target {
@@ -195,23 +202,28 @@ resource "google_data_loss_prevention_discovery_config" "demo" {
       }
     }
   }
+}
 
-  dynamic "targets" {
-    for_each = var.enable_cloudsql ? [1] : []
-    content {
-      cloud_sql_target {
-        filter {
-          collection {
-            include_regexes {
-              patterns {
-                instance_regex = "^${google_sql_database_instance.main[0].name}$"
-              }
+resource "google_data_loss_prevention_discovery_config" "sql_demo" {
+  count        = var.enable_cloudsql ? 1 : 0
+  parent       = "projects/${data.google_project.project.project_id}/locations/global"
+  location     = "global"
+  status       = "RUNNING"
+  display_name = "${var.prefix}-sql-discovery-config"
+
+  targets {
+    cloud_sql_target {
+      filter {
+        collection {
+          include_regexes {
+            patterns {
+              instance_regex = "^${google_sql_database_instance.main[0].name}$"
             }
           }
         }
-        generation_cadence {
-          refresh_frequency = "UPDATE_FREQUENCY_DAILY"
-        }
+      }
+      generation_cadence {
+        refresh_frequency = "UPDATE_FREQUENCY_DAILY"
       }
     }
   }
