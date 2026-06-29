@@ -158,6 +158,10 @@ resource "google_data_loss_prevention_discovery_config" "bq_demo" {
   status       = "RUNNING"
   display_name = "${var.prefix}-bq-discovery-config"
 
+  inspect_templates = [
+    google_data_loss_prevention_inspect_template.demo.id
+  ]
+
   targets {
     big_query_target {
       filter {
@@ -197,6 +201,10 @@ resource "google_data_loss_prevention_discovery_config" "gcs_demo" {
   status       = "RUNNING"
   display_name = "${var.prefix}-gcs-discovery-config"
 
+  inspect_templates = [
+    google_data_loss_prevention_inspect_template.demo.id
+  ]
+
   targets {
     cloud_storage_target {
       filter {
@@ -233,6 +241,10 @@ resource "google_data_loss_prevention_discovery_config" "sql_demo" {
   status       = "RUNNING"
   display_name = "${var.prefix}-sql-discovery-config"
 
+  inspect_templates = [
+    google_data_loss_prevention_inspect_template.demo.id
+  ]
+
   targets {
     cloud_sql_target {
       filter {
@@ -258,6 +270,36 @@ resource "google_data_loss_prevention_discovery_config" "sql_demo" {
         others {}
       }
       disabled {}
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# DLP Inspect Template
+# ---------------------------------------------------------------------------
+resource "google_data_loss_prevention_inspect_template" "demo" {
+  parent       = "projects/${data.google_project.project.project_id}/locations/global"
+  description  = "DLP Inspect Template for Demo"
+  display_name = "${var.prefix}-inspect-template"
+
+  inspect_config {
+    info_types {
+      name = "EMAIL_ADDRESS"
+    }
+    info_types {
+      name = "PHONE_NUMBER"
+    }
+    info_types {
+      name = "US_SOCIAL_SECURITY_NUMBER"
+    }
+    info_types {
+      name = "CREDIT_CARD_NUMBER"
+    }
+    info_types {
+      name = "PERSON_NAME"
+    }
+    info_types {
+      name = "DATE_OF_BIRTH"
     }
   }
 }
