@@ -171,8 +171,10 @@ resource "google_data_loss_prevention_discovery_config" "demo" {
           }
         }
       }
-      generation_cadence {
-        refresh_frequency = "UPDATE_FREQUENCY_DAILY"
+      cadence {
+        table_modified_cadence {
+          frequency = "DAILY"
+        }
       }
     }
   }
