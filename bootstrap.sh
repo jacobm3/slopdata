@@ -13,6 +13,8 @@
 #     ./bootstrap.sh           # apply, with a confirmation prompt
 #     ./bootstrap.sh -y        # skip the confirmation (full auto)
 #     ./bootstrap.sh --plan    # generate + plan only, don't create anything
+#     ./bootstrap.sh -f        # force regeneration of data
+#     ./bootstrap.sh -y -f     # full auto, force data regeneration
 # ============================================================================
 set -euo pipefail
 
@@ -21,12 +23,28 @@ cd "$HERE"
 
 MODE="apply"          # apply | plan
 AUTO_APPROVE="false"
-case "${1:-}" in
-  -y|--yes)   AUTO_APPROVE="true" ;;
-  --plan)     MODE="plan" ;;
-  "" )        ;;
-  * ) echo "unknown option: $1"; exit 1 ;;
-esac
+FORCE_REGEN="false"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -y|--yes)
+      AUTO_APPROVE="true"
+      shift
+      ;;
+    --plan)
+      MODE="plan"
+      shift
+      ;;
+    -f|--force)
+      FORCE_REGEN="true"
+      shift
+      ;;
+    *)
+      echo "unknown option: $1"
+      exit 1
+      ;;
+  esac
+done
 
 # ---- load config ------------------------------------------------------------
 [ -f config.env ] || { echo "config.env not found"; exit 1; }
@@ -93,19 +111,30 @@ fi
 PY="${HERE}/.venv/bin/python3"
 
 # ---- generate data ----------------------------------------------------------
-echo "[generate] producing data into ./data ..."
-rm -rf data
-mkdir -p data
-export PYTHONPATH="${HERE}/generators"   # so generators can import common.py
+# Check if data directory exists and is not empty
+DATA_EXISTS=false
+if [ -d data ] && [ "$(ls -A data 2>/dev/null)" ]; then
+  DATA_EXISTS=true
+fi
 
-[ "${ENABLE_CUSTOMERS}" = "true" ] && "$PY" generators/gen_customers.py  data/customers "$VOL_CUSTOMERS"
-[ "${ENABLE_FINANCIAL}" = "true" ] && "$PY" generators/gen_financial.py  data/financial "$VOL_FINANCIAL"
-[ "${ENABLE_PATENTS}"   = "true" ] && "$PY" generators/gen_patents.py    data/patents   "$VOL_PATENTS"
-[ "${ENABLE_SECRETS}"   = "true" ] && "$PY" generators/gen_secrets.py    data/secrets   "$VOL_SECRETS"
-[ "${ENABLE_MEDICAL}"   = "true" ] && bash  generators/run_synthea.sh    data/medical   "$VOL_MEDICAL"
+if [ "${FORCE_REGEN}" = "true" ] || [ "${DATA_EXISTS}" = "false" ]; then
+  echo "[generate] producing data into ./data ..."
+  rm -rf data
+  mkdir -p data
+  export PYTHONPATH="${HERE}/generators"   # so generators can import common.py
 
-echo "[generate] done. Local data size:"
-du -sh data
+  [ "${ENABLE_CUSTOMERS}" = "true" ] && "$PY" generators/gen_customers.py  data/customers "$VOL_CUSTOMERS"
+  [ "${ENABLE_FINANCIAL}" = "true" ] && "$PY" generators/gen_financial.py  data/financial "$VOL_FINANCIAL"
+  [ "${ENABLE_PATENTS}"   = "true" ] && "$PY" generators/gen_patents.py    data/patents   "$VOL_PATENTS"
+  [ "${ENABLE_SECRETS}"   = "true" ] && "$PY" generators/gen_secrets.py    data/secrets   "$VOL_SECRETS"
+  [ "${ENABLE_MEDICAL}"   = "true" ] && bash  generators/run_synthea.sh    data/medical   "$VOL_MEDICAL"
+
+  echo "[generate] done. Local data size:"
+  du -sh data
+else
+  echo "[generate] ./data already exists and is not empty. Skipping generation."
+  echo "[generate] Use -f or --force to force regeneration."
+fi
 
 # ---- enable the GCP APIs we need (idempotent) -------------------------------
 echo "[gcp] enabling required APIs (one-time, may take a minute)..."
