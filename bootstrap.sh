@@ -48,9 +48,38 @@ echo "   cloudsql: $ENABLE_CLOUDSQL"
 echo "=============================================================="
 
 # ---- prerequisites ----------------------------------------------------------
-for cmd in gcloud gsutil bq terraform python3 java; do
+# Note: terraform is checked/installed separately below. We don't put it in this
+# loop because GCP Cloud Shell ships a /google/bin/terraform *stub* that only
+# prints install instructions -- command -v would find it and pass, but it isn't
+# a working terraform.
+for cmd in gcloud gsutil bq python3 java; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing required command: $cmd"; exit 1; }
 done
+
+# ---- terraform install ------------------------------------------------------
+# We can't trust `command -v terraform` (see the Cloud Shell stub note above), so
+# we go by the dpkg package instead. If the real terraform package isn't
+# installed, install it from HashiCorp's official apt repo. Terraform is not in
+# Debian's own repos (licensing), so the HashiCorp repo is required.
+if dpkg -s terraform >/dev/null 2>&1; then
+  echo "[setup] terraform already installed via apt."
+else
+  echo "[setup] installing terraform from HashiCorp apt repo..."
+  sudo apt-get install -y -qq gnupg curl lsb-release >/dev/null
+  # Add HashiCorp's signing key (--yes so re-runs overwrite the existing keyring).
+  curl -fsSL https://apt.releases.hashicorp.com/gpg \
+    | sudo gpg --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+  # Add the apt repo for this Debian release.
+  echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
+    | sudo tee /etc/apt/sources.list.d/hashicorp.list >/dev/null
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq terraform >/dev/null
+fi
+
+# Call terraform by the dpkg-installed path so the /google/bin stub (which comes
+# earlier on Cloud Shell's PATH) can't shadow the real binary.
+TERRAFORM="$(dpkg -L terraform | grep -m1 '/bin/terraform$')"
+[ -x "$TERRAFORM" ] || { echo "terraform install failed"; exit 1; }
 
 # ---- python venv with Faker -------------------------------------------------
 if [ ! -d .venv ]; then
@@ -87,7 +116,7 @@ gcloud services enable \
 
 # ---- terraform --------------------------------------------------------------
 cd terraform
-terraform init -input=false >/dev/null
+"$TERRAFORM" init -input=false >/dev/null
 
 TF_ARGS=(
   -var "project_id=${PROJECT_ID}"
@@ -98,7 +127,7 @@ TF_ARGS=(
 )
 
 echo "[terraform] planning..."
-terraform plan -input=false "${TF_ARGS[@]}"
+"$TERRAFORM" plan -input=false "${TF_ARGS[@]}"
 
 if [ "$MODE" = "plan" ]; then
   echo "[terraform] --plan given; stopping before apply."
@@ -115,13 +144,13 @@ if [ "$AUTO_APPROVE" != "true" ]; then
 fi
 
 echo "[terraform] applying..."
-terraform apply -input=false -auto-approve "${TF_ARGS[@]}"
+"$TERRAFORM" apply -input=false -auto-approve "${TF_ARGS[@]}"
 
 # ---- read outputs -----------------------------------------------------------
-BUCKET="$(terraform output -raw bucket_name)"
-DATASET="$(terraform output -raw dataset_id)"
-SQL_INSTANCE="$(terraform output -raw sql_instance)"
-SQL_DB="$(terraform output -raw sql_database)"
+BUCKET="$("$TERRAFORM" output -raw bucket_name)"
+DATASET="$("$TERRAFORM" output -raw dataset_id)"
+SQL_INSTANCE="$("$TERRAFORM" output -raw sql_instance)"
+SQL_DB="$("$TERRAFORM" output -raw sql_database)"
 cd "$HERE"
 
 # ---- upload data to the bucket ----------------------------------------------
