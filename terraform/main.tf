@@ -135,7 +135,6 @@ resource "google_secret_manager_secret_version" "sdp_sql_password" {
 
 resource "google_project_service_identity" "dlp" {
   provider = google-beta
-  count    = var.enable_cloudsql ? 1 : 0
   project  = data.google_project.project.project_id
   service  = "dlp.googleapis.com"
 }
@@ -144,5 +143,77 @@ resource "google_secret_manager_secret_iam_member" "sdp_secret_accessor" {
   count     = var.enable_cloudsql ? 1 : 0
   secret_id = google_secret_manager_secret.sdp_sql_password[0].id
   role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_project_service_identity.dlp[0].email}"
+  member    = "serviceAccount:${google_project_service_identity.dlp.email}"
+}
+
+resource "google_project_iam_member" "dlp_project_driver" {
+  project = data.google_project.project.project_id
+  role    = "roles/dlp.projectdriver"
+  member  = "serviceAccount:${google_project_service_identity.dlp.email}"
+}
+
+resource "google_data_loss_prevention_discovery_config" "demo" {
+  parent       = "projects/${data.google_project.project.project_id}/locations/global"
+  location     = "global"
+  status       = "RUNNING"
+  display_name = "${var.prefix}-discovery-config"
+
+  targets {
+    big_query_target {
+      filter {
+        tables {
+          include_regexes {
+            patterns {
+              project_id_regex = "^${data.google_project.project.project_id}$"
+              dataset_id_regex = "^${local.name_us}_demo$"
+              table_id_regex   = ".*"
+            }
+          }
+        }
+      }
+      generation_cadence {
+        refresh_frequency = "UPDATE_FREQUENCY_DAILY"
+      }
+    }
+  }
+
+  targets {
+    cloud_storage_target {
+      filter {
+        collection {
+          include_regexes {
+            patterns {
+              cloud_storage_regex {
+                project_id_regex  = "^${data.google_project.project.project_id}$"
+                bucket_name_regex = "^${google_storage_bucket.data.name}$"
+              }
+            }
+          }
+        }
+      }
+      generation_cadence {
+        refresh_frequency = "UPDATE_FREQUENCY_DAILY"
+      }
+    }
+  }
+
+  dynamic "targets" {
+    for_each = var.enable_cloudsql ? [1] : []
+    content {
+      cloud_sql_target {
+        filter {
+          collection {
+            include_regexes {
+              patterns {
+                instance_id_regex = "^${google_sql_database_instance.main[0].name}$"
+              }
+            }
+          }
+        }
+        generation_cadence {
+          refresh_frequency = "UPDATE_FREQUENCY_DAILY"
+        }
+      }
+    }
+  }
 }

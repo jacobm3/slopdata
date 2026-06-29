@@ -228,10 +228,11 @@ cat <<EOF
    dataset : ${PROJECT_ID}:${DATASET}
 $( [ "${ENABLE_CLOUDSQL}" = "true" ] && echo "   cloudsql: ${SQL_INSTANCE} (db: ${SQL_DB})" )
 
- Next: turn on Sensitive Data Protection discovery
+ Next: Sensitive Data Protection discovery is configured to run daily!
+   You can monitor the profiling progress in the Google Cloud Console:
    Console -> Security -> Sensitive Data Protection -> Discovery
-   Create scan configs for Cloud Storage, BigQuery$( [ "${ENABLE_CLOUDSQL}" = "true" ] && echo " and Cloud SQL" ).
-   Profiles populate in SCC within ~minutes-to-hours.
+$( [ "${ENABLE_CLOUDSQL}" = "true" ] && echo "   *Note for Cloud SQL: You must edit the service connection in the console\n   to associate the 'sdp_readonly' user with the Secret Manager password." )
+   Profiles will populate in SCC within ~minutes-to-hours.
 
  To tear everything down (and stop any cost):
    ./destroy.sh
