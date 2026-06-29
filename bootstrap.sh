@@ -65,15 +65,17 @@ if dpkg -s terraform >/dev/null 2>&1; then
   echo "[setup] terraform already installed via apt."
 else
   echo "[setup] installing terraform from HashiCorp apt repo..."
-  sudo apt-get install -y -qq gnupg curl lsb-release >/dev/null
+  # 2>/dev/null silences Cloud Shell's "packages won't persist" apt warning;
+  # the [ -x "$TERRAFORM" ] guard below still catches a genuine install failure.
+  sudo apt-get install -y -qq gnupg curl lsb-release >/dev/null 2>&1
   # Add HashiCorp's signing key (--yes so re-runs overwrite the existing keyring).
   curl -fsSL https://apt.releases.hashicorp.com/gpg \
     | sudo gpg --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
   # Add the apt repo for this Debian release.
   echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
     | sudo tee /etc/apt/sources.list.d/hashicorp.list >/dev/null
-  sudo apt-get update -qq
-  sudo apt-get install -y -qq terraform >/dev/null
+  sudo apt-get update -qq 2>/dev/null
+  sudo apt-get install -y -qq terraform >/dev/null 2>&1
 fi
 
 # Call terraform by the dpkg-installed path so the /google/bin stub (which comes
