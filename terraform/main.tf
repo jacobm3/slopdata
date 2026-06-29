@@ -133,9 +133,15 @@ resource "google_secret_manager_secret_version" "sdp_sql_password" {
   secret_data = random_password.sdp_sql_password[0].result
 }
 
+resource "google_project_service_identity" "dlp" {
+  count   = var.enable_cloudsql ? 1 : 0
+  project = data.google_project.project.project_id
+  service = "dlp.googleapis.com"
+}
+
 resource "google_secret_manager_secret_iam_member" "sdp_secret_accessor" {
   count     = var.enable_cloudsql ? 1 : 0
   secret_id = google_secret_manager_secret.sdp_sql_password[0].id
   role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-dlp.iam.gserviceaccount.com"
+  member    = "serviceAccount:${google_project_service_identity.dlp[0].email}"
 }
