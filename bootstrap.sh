@@ -139,6 +139,7 @@ fi
 # ---- enable the GCP APIs we need (idempotent) -------------------------------
 echo "[gcp] enabling required APIs (one-time, may take a minute)..."
 gcloud services enable \
+  serviceusage.googleapis.com \
   storage.googleapis.com \
   bigquery.googleapis.com \
   sqladmin.googleapis.com \
