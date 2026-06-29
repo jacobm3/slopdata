@@ -1,44 +1,57 @@
 #!/usr/bin/env bash
+
 # ============================================================================
-# bootstrap.sh -- ONE command to generate fake sensitive data and deploy it to
-# GCP so Sensitive Data Protection (SDP) / Security Command Center can find it.
+# Welcome to bootstrap.sh!
+# This is the "Main Button" script. You press this button, and it sets up
+# everything for the demo.
 #
-#   1. reads your settings from config.env
-#   2. generates the data locally (free)
-#   3. shows you a Terraform plan and asks before creating anything
-#   4. creates the bucket / BigQuery dataset / Cloud SQL instance
-#   5. uploads the data and loads it into BigQuery and the database
-#
-# Run it from the repo root, e.g. in GCP Cloud Shell:
-#     ./bootstrap.sh           # apply, with a confirmation prompt
-#     ./bootstrap.sh -y        # skip the confirmation (full auto)
-#     ./bootstrap.sh --plan    # generate + plan only, don't create anything
+# It does these things:
+# 1. Reads your settings from "config.env".
+# 2. Creates fake data on your computer (for free!).
+# 3. Sets up Google Cloud resources (like storage buckets and databases) using Terraform.
+# 4. Uploads the fake data to Google Cloud.
 # ============================================================================
+
+# Safety rules: stop if anything goes wrong.
+# -e: Stop if a command fails.
+# -u: Stop if we use an undefined variable.
+# -o pipefail: Stop if any command in a pipeline fails.
 set -euo pipefail
 
+# Find out where this script is located on the computer.
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 
-MODE="apply"          # apply | plan
+# Decide what mode we are in.
+# "apply" means "actually build things".
+# "plan" means "just show me what you would build, but don't build it yet".
+MODE="apply"          
 AUTO_APPROVE="false"
+
+# Look at the first option the user typed after the script name (e.g., ./bootstrap.sh -y)
 case "${1:-}" in
-  -y|--yes)   AUTO_APPROVE="true" ;;
-  --plan)     MODE="plan" ;;
-  "" )        ;;
-  * ) echo "unknown option: $1"; exit 1 ;;
+  -y|--yes)   AUTO_APPROVE="true" ;; # If they said -y, don't ask for confirmation.
+  --plan)     MODE="plan" ;;         # If they said --plan, just show the plan.
+  "" )        ;;                     # If they said nothing, use defaults.
+  * ) echo "unknown option: $1"; exit 1 ;; # If they typed something weird, stop.
 esac
 
-# ---- load config ------------------------------------------------------------
+# ---- Load Settings ------------------------------------------------------------
+# Check if the "config.env" file exists. If not, stop.
 [ -f config.env ] || { echo "config.env not found"; exit 1; }
+# Load the settings from "config.env" so we can use them as variables.
 # shellcheck disable=SC1091
 source config.env
 
-# Default the project to the active gcloud project if not set.
+# We need a Google Cloud Project ID to know where to build things.
+# If it's not set in config.env, we ask the 'gcloud' tool what the current active project is.
 if [ -z "${PROJECT_ID:-}" ]; then
   PROJECT_ID="$(gcloud config get-value project 2>/dev/null || true)"
 fi
+# If we STILL don't have a project ID, we have to stop.
 [ -n "$PROJECT_ID" ] || { echo "No PROJECT_ID set and no active gcloud project."; exit 1; }
 
+# Print out a nice summary of what we are about to do.
 echo "=============================================================="
 echo " Synthetic data demo"
 echo "   project : $PROJECT_ID"
@@ -47,57 +60,67 @@ echo "   region  : $REGION"
 echo "   cloudsql: $ENABLE_CLOUDSQL"
 echo "=============================================================="
 
-# ---- prerequisites ----------------------------------------------------------
-# Note: terraform is checked/installed separately below. We don't put it in this
-# loop because GCP Cloud Shell ships a /google/bin/terraform *stub* that only
-# prints install instructions -- command -v would find it and pass, but it isn't
-# a working terraform.
+# ---- Check for Required Tools -----------------------------------------------
+# We need these tools installed on the computer to run.
+# gcloud: Google Cloud CLI (to talk to Google Cloud)
+# gsutil: Google Cloud Storage tool (to upload files)
+# bq: BigQuery tool (to load data into tables)
+# python3: Python programming language (to run our data generators)
+# java: Java (needed for the Synthea medical data generator)
 for cmd in gcloud gsutil bq python3 java; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing required command: $cmd"; exit 1; }
 done
 
-# ---- terraform install ------------------------------------------------------
-# We can't trust `command -v terraform` (see the Cloud Shell stub note above), so
-# we go by the dpkg package instead. If the real terraform package isn't
-# installed, install it from HashiCorp's official apt repo. Terraform is not in
-# Debian's own repos (licensing), so the HashiCorp repo is required.
+# ---- Install Terraform ------------------------------------------------------
+# Terraform is the tool that builds our Google Cloud resources.
+# We check if it is already installed.
 if dpkg -s terraform >/dev/null 2>&1; then
   echo "[setup] terraform already installed via apt."
 else
+  # If not installed, we download and install it.
   echo "[setup] installing terraform from HashiCorp apt repo..."
-  # 2>/dev/null silences Cloud Shell's "packages won't persist" apt warning;
-  # the [ -x "$TERRAFORM" ] guard below still catches a genuine install failure.
+  # Install some helper tools for adding the repository.
   sudo apt-get install -y -qq gnupg curl lsb-release >/dev/null 2>&1
-  # Add HashiCorp's signing key (--yes so re-runs overwrite the existing keyring).
+  # Get the official security key for Terraform.
   curl -fsSL https://apt.releases.hashicorp.com/gpg \
     | sudo gpg --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-  # Add the apt repo for this Debian release.
+  # Add the Terraform repository to our list of software sources.
   echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
     | sudo tee /etc/apt/sources.list.d/hashicorp.list >/dev/null
+  # Update the list and install Terraform.
   sudo apt-get update -qq 2>/dev/null
   sudo apt-get install -y -qq terraform >/dev/null 2>&1
 fi
 
-# Call terraform by the dpkg-installed path so the /google/bin stub (which comes
-# earlier on Cloud Shell's PATH) can't shadow the real binary.
+# Find where the real Terraform binary was installed.
 TERRAFORM="$(dpkg -L terraform | grep -m1 '/bin/terraform$')"
 [ -x "$TERRAFORM" ] || { echo "terraform install failed"; exit 1; }
 
-# ---- python venv with Faker -------------------------------------------------
+# ---- Setup Python Virtual Environment ----------------------------------------
+# A virtual environment (.venv) is like an isolated sandbox for Python.
+# It prevents our project's python packages from messing up the rest of the system.
 if [ ! -d .venv ]; then
   echo "[setup] creating python venv + installing Faker..."
+  # Create the sandbox.
   python3 -m venv .venv
+  # Upgrade 'pip' (the Python package installer).
   ./.venv/bin/pip install --quiet --upgrade pip
+  # Install 'Faker' (used to generate fake names/addresses) and other packages.
   ./.venv/bin/pip install --quiet -r generators/requirements.txt
 fi
+# Define a shortcut to use our sandbox Python.
 PY="${HERE}/.venv/bin/python3"
 
-# ---- generate data ----------------------------------------------------------
+# ---- Generate Fake Data -----------------------------------------------------
 echo "[generate] producing data into ./data ..."
+# Delete any old data we generated before, and make a fresh folder.
 rm -rf data
 mkdir -p data
-export PYTHONPATH="${HERE}/generators"   # so generators can import common.py
+# Tell Python where to find our helper scripts.
+export PYTHONPATH="${HERE}/generators"   
 
+# Run the generator scripts if they are enabled in config.env.
+# We pass the output folder and the amount of data we want.
 [ "${ENABLE_CUSTOMERS}" = "true" ] && "$PY" generators/gen_customers.py  data/customers "$VOL_CUSTOMERS"
 [ "${ENABLE_FINANCIAL}" = "true" ] && "$PY" generators/gen_financial.py  data/financial "$VOL_FINANCIAL"
 [ "${ENABLE_PATENTS}"   = "true" ] && "$PY" generators/gen_patents.py    data/patents   "$VOL_PATENTS"
@@ -105,9 +128,11 @@ export PYTHONPATH="${HERE}/generators"   # so generators can import common.py
 [ "${ENABLE_MEDICAL}"   = "true" ] && bash  generators/run_synthea.sh    data/medical   "$VOL_MEDICAL"
 
 echo "[generate] done. Local data size:"
+# Show how much data we made.
 du -sh data
 
-# ---- enable the GCP APIs we need (idempotent) -------------------------------
+# ---- Enable Google Cloud APIs -----------------------------------------------
+# Before we can use Google Cloud services, we have to turn them on (enable them).
 echo "[gcp] enabling required APIs (one-time, may take a minute)..."
 gcloud services enable \
   storage.googleapis.com \
@@ -116,10 +141,12 @@ gcloud services enable \
   dlp.googleapis.com \
   --project "$PROJECT_ID" --quiet
 
-# ---- terraform --------------------------------------------------------------
+# ---- Run Terraform ----------------------------------------------------------
 cd terraform
+# Initialize Terraform (downloads plugins it needs).
 "$TERRAFORM" init -input=false >/dev/null
 
+# Prepare the settings we want to pass to Terraform.
 TF_ARGS=(
   -var "project_id=${PROJECT_ID}"
   -var "region=${REGION}"
@@ -128,14 +155,17 @@ TF_ARGS=(
   -var "retention_days=${RETENTION_DAYS}"
 )
 
+# Ask Terraform to show us what it plans to build.
 echo "[terraform] planning..."
 "$TERRAFORM" plan -input=false "${TF_ARGS[@]}"
 
+# If we only wanted to "plan", we stop here.
 if [ "$MODE" = "plan" ]; then
   echo "[terraform] --plan given; stopping before apply."
   exit 0
 fi
 
+# Unless we said --yes (-y), ask the user for permission before building.
 if [ "$AUTO_APPROVE" != "true" ]; then
   echo
   read -r -p "Create these resources in project ${PROJECT_ID}? [y/N] " ans
@@ -145,46 +175,56 @@ if [ "$AUTO_APPROVE" != "true" ]; then
   esac
 fi
 
+# Actually build the resources in Google Cloud!
 echo "[terraform] applying..."
 "$TERRAFORM" apply -input=false -auto-approve "${TF_ARGS[@]}"
 
-# ---- read outputs -----------------------------------------------------------
+# ---- Read Terraform Outputs -------------------------------------------------
+# Get the names of the resources Terraform just created so we can use them.
 BUCKET="$("$TERRAFORM" output -raw bucket_name)"
 DATASET="$("$TERRAFORM" output -raw dataset_id)"
 SQL_INSTANCE="$("$TERRAFORM" output -raw sql_instance)"
 SQL_DB="$("$TERRAFORM" output -raw sql_database)"
 cd "$HERE"
 
-# ---- upload data to the bucket ----------------------------------------------
+# ---- Upload Data to Cloud Storage -------------------------------------------
+# Copy all the fake data we generated from our local computer into the Google Cloud Storage bucket.
 echo "[upload] copying data to gs://${BUCKET}/ ..."
 gsutil -m cp -r data/* "gs://${BUCKET}/"
 
-# ---- load CSVs into BigQuery (autodetect schema) ----------------------------
+# ---- Load Data into BigQuery ------------------------------------------------
+# BigQuery is Google's super-fast database for analyzing lots of data.
+# This helper function loads a CSV file from our storage bucket into a BigQuery table.
 bq_load() {
   local table="$1" uri="$2"
   echo "[bigquery] loading ${table} ..."
+  # --autodetect: Figure out the columns automatically.
+  # --replace: Overwrite any old data in the table.
   bq --location="$REGION" load --quiet --replace --autodetect \
     --source_format=CSV "${PROJECT_ID}:${DATASET}.${table}" "$uri" || \
     echo "  (skipped ${table}: source not present)"
 }
+
+# Load the tables if they were enabled.
 [ "${ENABLE_CUSTOMERS}" = "true" ] && bq_load customers "gs://${BUCKET}/customers/customers.csv"
 [ "${ENABLE_FINANCIAL}" = "true" ] && bq_load financial "gs://${BUCKET}/financial/financial.csv"
 [ "${ENABLE_PATENTS}"   = "true" ] && bq_load patents   "gs://${BUCKET}/patents/patents.csv"
 if [ "${ENABLE_MEDICAL}" = "true" ]; then
-  # Load the highest-signal Synthea tables (these carry the patient PII).
+  # Load the medical tables.
   bq_load medical_patients    "gs://${BUCKET}/medical/patients.csv"
   bq_load medical_conditions  "gs://${BUCKET}/medical/conditions.csv"
   bq_load medical_medications "gs://${BUCKET}/medical/medications.csv"
 fi
 
-# ---- import customer data into Cloud SQL (server-side from the bucket) -------
+# ---- Load Data into Cloud SQL (Database) ------------------------------------
+# If Cloud SQL (Postgres) is enabled, we import the customer SQL file.
 if [ "${ENABLE_CLOUDSQL}" = "true" ] && [ "${ENABLE_CUSTOMERS}" = "true" ]; then
   echo "[cloudsql] importing customers into ${SQL_INSTANCE}/${SQL_DB} ..."
   gcloud sql import sql "$SQL_INSTANCE" "gs://${BUCKET}/customers/customers.sql" \
     --database="$SQL_DB" --project="$PROJECT_ID" --quiet
 fi
 
-# ---- done -------------------------------------------------------------------
+# ---- Done! ------------------------------------------------------------------
 cat <<EOF
 
 ==============================================================
