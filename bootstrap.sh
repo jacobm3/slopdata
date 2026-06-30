@@ -74,6 +74,25 @@ for cmd in gcloud gsutil bq python3 java; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing required command: $cmd"; exit 1; }
 done
 
+# ---- auth pre-flight check --------------------------------------------------
+# This script runs non-interactively (especially with -y), so gcloud cannot
+# prompt for a fresh login if your credentials have expired. We check for a
+# usable access token UP FRONT -- before generating ~186MB of data -- so a
+# stale login fails in seconds with a clear message instead of dying later at
+# the "enable APIs" step after a long data-generation run.
+echo "[auth] checking gcloud credentials..."
+if ! gcloud auth print-access-token >/dev/null 2>&1; then
+  ACTIVE_ACCT="$(gcloud config get-value account 2>/dev/null || echo 'none')"
+  echo "ERROR: gcloud cannot get a valid access token for account: ${ACTIVE_ACCT}"
+  echo "       Your credentials have likely expired. Refresh them with:"
+  echo
+  echo "         gcloud auth login"
+  echo
+  echo "       (or switch to a working account with: gcloud config set account ACCOUNT)"
+  echo "       Then re-run this script."
+  exit 1
+fi
+
 # ---- terraform install ------------------------------------------------------
 # We can't trust `command -v terraform` (see the Cloud Shell stub note above), so
 # we go by the dpkg package instead. If the real terraform package isn't
@@ -150,6 +169,29 @@ gcloud services enable \
 # Give the APIs a moment to propagate to prevent transient Terraform errors
 echo "[gcp] waiting 10 seconds for API propagation..."
 sleep 10
+
+# ---- give Terraform the SAME credentials gcloud is using --------------------
+# IMPORTANT: gcloud's login and Terraform's credentials are SEPARATE.
+#   - gcloud / gsutil / bq use the account from `gcloud auth login`.
+#   - The Terraform Google provider uses Application Default Credentials (ADC),
+#     which on a GCE VM silently falls back to the VM's ATTACHED service
+#     account -- not your login. That SA usually can't create buckets/datasets,
+#     so Terraform fails with 403 even though gcloud commands work fine.
+# Fix: export an access token minted from your active gcloud account. The Google
+# provider reads GOOGLE_OAUTH_ACCESS_TOKEN before trying ADC/the metadata
+# server, so this forces Terraform to act as your logged-in user. (Tokens last
+# ~1 hour, which is plenty for this apply.)
+echo "[auth] passing gcloud credentials to Terraform via access token..."
+export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"
+
+# When Terraform authenticates as a USER (our access token) instead of a service
+# account, some APIs -- notably DLP -- refuse the request unless a "quota
+# project" is named, because a bare user token isn't tied to a billing project.
+# These two env vars make the Google provider attach the x-goog-user-project
+# header (= our project) to every request, satisfying that requirement.
+# Equivalent to setting user_project_override + billing_project in the provider.
+export USER_PROJECT_OVERRIDE="true"
+export GOOGLE_BILLING_PROJECT="$PROJECT_ID"
 
 # ---- terraform --------------------------------------------------------------
 cd terraform
