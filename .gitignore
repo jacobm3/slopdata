@@ -12,6 +12,9 @@ terraform/.tf.log.debug
 # cached Synthea jar
 /generators/.synthea/
 
+# local env / config files (may contain project-specific or sensitive values)
+*.env
+
 # terraform state + local files
 terraform/.terraform/
 terraform/.terraform.lock.hcl
