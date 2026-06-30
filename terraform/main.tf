@@ -153,8 +153,8 @@ resource "google_project_iam_member" "dlp_project_driver" {
 }
 
 resource "google_data_loss_prevention_discovery_config" "bq_demo" {
-  parent       = "projects/${data.google_project.project.project_id}/locations/global"
-  location     = "global"
+  parent       = "projects/${data.google_project.project.project_id}/locations/${var.region}"
+  location     = var.region
   status       = "RUNNING"
   display_name = "${var.prefix}-bq-discovery-config"
 
@@ -196,8 +196,8 @@ resource "google_data_loss_prevention_discovery_config" "bq_demo" {
 }
 
 resource "google_data_loss_prevention_discovery_config" "gcs_demo" {
-  parent       = "projects/${data.google_project.project.project_id}/locations/global"
-  location     = "global"
+  parent       = "projects/${data.google_project.project.project_id}/locations/${var.region}"
+  location     = var.region
   status       = "RUNNING"
   display_name = "${var.prefix}-gcs-discovery-config"
 
@@ -236,8 +236,8 @@ resource "google_data_loss_prevention_discovery_config" "gcs_demo" {
 
 resource "google_data_loss_prevention_discovery_config" "sql_demo" {
   count        = var.enable_cloudsql ? 1 : 0
-  parent       = "projects/${data.google_project.project.project_id}/locations/global"
-  location     = "global"
+  parent       = "projects/${data.google_project.project.project_id}/locations/${var.region}"
+  location     = var.region
   status       = "RUNNING"
   display_name = "${var.prefix}-sql-discovery-config"
 
